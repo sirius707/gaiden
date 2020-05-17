@@ -9,7 +9,7 @@
 #define SPD_X 15.0f
 #define JMP_SPD G*18.0f / 5
 
-#define PLR_H_SPD 350
+#define PLR_H_SPD 250
 #define JMP_SPD 9.8*30
 
 SDL_Event sdl_event;
@@ -48,12 +48,19 @@ void g_init()
     obstacles[0].pho.pos.y = 290;
 
     obstacles[1].pho.h = 50;
-    obstacles[1].pho.w = 400;
+    obstacles[1].pho.w = 900;
     obstacles[1].pho.pos.x = 200;
     obstacles[1].pho.pos.y = 340;
 
     for(int i = 0; i < N_OBST; i++)
     stile_fill(&tile, obstacles[i].pho.pos.x / T_W, obstacles[i].pho.pos.y / T_H, obstacles[i].pho.w / T_W, obstacles[i].pho.h / T_H, 1);
+
+    cam.lock_area_w = 25;
+    cam.lock_area_h = 200;
+    cam.w = 640;
+    cam.h = 480;
+    cam.pos.x = 0;
+    cam.pos.y = 0;
 
 
 }
@@ -101,8 +108,10 @@ inline void g_physics()
 
        for(i = 0; i < N_OB; i++){
 
-
+                       VECTOR initial_pos;
                        pho = &objs[i].pho;
+
+                       initial_pos = pho->pos;
 
                        if(objs[i].gravity){
                             phy_gravity(pho);
@@ -172,7 +181,7 @@ inline void g_physics()
 
                            phy_commit(pho);//lmao they should haha
 
-
+                           pho->movement = (int)pho->vel.x + (int)pho->vel.y;
 
 
        }
@@ -229,11 +238,13 @@ inline void g_update()
         }
     }
 
-
 }
 
 inline void g_render()
 {
+        //if(objs[0].pho.movement)
+        g_cam_follow(objs[0].pho.tmp_pos, objs[0].pho.w, objs[0].pho.h);
+
         SDL_Rect rect;
 
         SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
@@ -243,8 +254,8 @@ inline void g_render()
 
             rect.h = objs[i].pho.h;
             rect.w = objs[i].pho.w;
-            rect.x = objs[i].pho.pos.x;
-            rect.y = objs[i].pho.pos.y;
+            rect.x = objs[i].pho.pos.x - cam.pos.x;
+            rect.y = objs[i].pho.pos.y - cam.pos.y;
 
             SDL_SetRenderDrawColor(g_renderer, 0, 255, 0, 255);
             SDL_RenderFillRect(g_renderer, &rect);
@@ -254,12 +265,29 @@ inline void g_render()
 
             rect.h = obstacles[i].pho.h;
             rect.w = obstacles[i].pho.w;
-            rect.x = obstacles[i].pho.pos.x;
-            rect.y = obstacles[i].pho.pos.y;
+            rect.x = obstacles[i].pho.pos.x - cam.pos.x;
+            rect.y = obstacles[i].pho.pos.y - cam.pos.y;
 
             SDL_SetRenderDrawColor(g_renderer, 255, 0, 0, 255);
             SDL_RenderDrawRect(g_renderer, &rect);
         }
+
+
+                            //render camera
+        rect.h = cam.h;
+        rect.w = cam.w;
+        rect.x = cam.pos.x - cam.pos.x;
+        rect.y = cam.pos.y - cam.pos.y;
+        SDL_SetRenderDrawColor(g_renderer, 2, 0, 255, 255);
+        SDL_RenderDrawRect(g_renderer, &rect);
+
+                        //render lock area in camera
+        rect.h = cam.lock_area_h;
+        rect.w = cam.lock_area_w;
+        rect.x = cam.pos.x + cam.w/2 - cam.lock_area_w/2 - cam.pos.x;
+        rect.y = cam.pos.y + cam.h/2 - cam.lock_area_h/2 - cam.pos.y;
+        SDL_SetRenderDrawColor(g_renderer, 2, 0, 255, 255);
+        SDL_RenderDrawRect(g_renderer, &rect);
 
         SDL_RenderPresent(g_renderer);
 
@@ -296,7 +324,7 @@ void g_play()
                 //rest(50);
                 //SDL_Delay(50);
 
-                printf("%f\r", delta_time);
+
 
      }
 
@@ -335,5 +363,33 @@ inline void g_tick()
     elapsed_ticks = tmp_ticks;
     delta_time = delta_ticks / 1000.0f;
 }
+
+
+inline void g_cam_follow(VECTOR pos, float w, float h)
+{
+    int lock_x = cam.pos.x + cam.w/2 - cam.lock_area_w*2;
+    int lock_y = cam.pos.y + cam.h/2 - cam.lock_area_h/2;
+    int x_dir = 0;
+    int y_dir = 0;
+
+    x_dir = (pos.x < lock_x+w*2) * -1;
+    x_dir += (pos.x + w) > (lock_x + cam.lock_area_w + w*2);
+
+    y_dir = (pos.y < lock_y) * -1;
+    y_dir += (pos.y + cam.lock_area_h) > lock_y;
+
+    cam.pos.x = (pos.x + w/2) - cam.w/2;
+    cam.pos.y = (pos.y + h/2) - cam.h/2;
+
+    //stop camera form going over screen
+    if(cam.pos.x < 0) cam.pos.x = 0;
+    if(cam.pos.x + cam.w > 640*4) cam.pos.x = 640*4 - cam.w;
+
+    if(cam.pos.y < 0) cam.pos.y = 0;
+    if(cam.pos.y + cam.h > 480*4) cam.pos.y = 480*4 - cam.h;
+
+    printf("%d\n", objs[0].pho.movement);
+}
+
 
 

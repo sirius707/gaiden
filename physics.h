@@ -1,6 +1,8 @@
 #ifndef PHYSICS_H
 #define PHYSICS_H
 
+#include <stdbool.h>
+
 #define G 9.8
 
 
@@ -42,6 +44,7 @@ struct PHYSOBJ{
     char x_collision;
     char y_collision;
 
+    bool movement; // true if movement ocurred
     float max_spd;//highest reachable speed
 
 };
