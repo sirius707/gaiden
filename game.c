@@ -1,16 +1,16 @@
 #include "game.h"
 
-#define MAP_W 400
-#define MAP_H 400
+#define MAP_W 200
+#define MAP_H 200
 #define T_W 10
 #define T_H 10
 
 #define MAX_SPD 15.0f
-#define SPD_X 15.0f
-#define JMP_SPD G*18.0f / 5
+#define SPD_X 60.0f
 
-#define PLR_H_SPD 250
-#define JMP_SPD 9.8*30
+
+#define PLR_H_SPD 300
+#define JMP_SPD 9.8*20
 
 SDL_Event sdl_event;
 bool quit_event = 0;
@@ -23,6 +23,7 @@ bool down_key;
 bool right_key;
 bool block_key;
 
+bool attackers[N_OB];//if an index is true, then the object with the corresponding index is attacking
 
 uint32_t delta_ticks = 0;
 uint32_t elapsed_ticks = 0;
@@ -34,29 +35,71 @@ void g_init()
 
     stile_init(&tile, MAP_W, MAP_H);
 
-    objs[0].pho.h = 50.0f;
+    objs[1].pho.h = 30.0f;
+    objs[1].pho.w = 20.0f;
+    objs[1].pho.tmp_pos.x = 130.0f;
+    objs[1].pho.tmp_pos.y = 100.0f;
+    objs[1].pho.gravity_scale = 4;
+    objs[1].gravity = 1;
+    objs[1].state = IDLE;
+    objs[1].controller = AI;
+
+    objs[0].atk_info.active_frame = 0;
+    objs[0].atk_info.x = 30;
+    objs[0].atk_info.y = 10;
+    objs[0].atk_info.width = 30;
+    objs[0].atk_info.height = 30;
+
+
+    objs[0].pho.h = 30.0f;
     objs[0].pho.w = 20.0f;
-    objs[0].pho.tmp_pos.x = 100.0f;
+    objs[0].pho.tmp_pos.x = 70.0f;
     objs[0].pho.tmp_pos.y = 100.0f;
-    objs[0].pho.gravity_scale = 4.2;
+    objs[0].pho.gravity_scale = 4;
     objs[0].gravity = 1;
     objs[0].state = IDLE;
+    objs[0].controller = HUMAN;
 
-    obstacles[0].pho.h = 50;
+    objs[2].pho.h = 30.0f;
+    objs[2].pho.w = 20.0f;
+    objs[2].pho.tmp_pos.x = 170.0f;
+    objs[2].pho.tmp_pos.y = 100.0f;
+    objs[2].pho.gravity_scale = 4;
+    objs[2].gravity = 1;
+    objs[2].state = IDLE;
+    objs[2].controller = AI;
+
+    obstacles[0].pho.h = 20;
     obstacles[0].pho.w = 400;
     obstacles[0].pho.pos.x = 0;
-    obstacles[0].pho.pos.y = 290;
+    obstacles[0].pho.pos.y = 500;
 
-    obstacles[1].pho.h = 50;
-    obstacles[1].pho.w = 900;
-    obstacles[1].pho.pos.x = 200;
-    obstacles[1].pho.pos.y = 340;
+    obstacles[1].pho.h = 20;
+    obstacles[1].pho.w = 50;
+    obstacles[1].pho.pos.x = 130;
+    obstacles[1].pho.pos.y = 490;
+
+    obstacles[2].pho.h = 20;
+    obstacles[2].pho.w = 400;
+    obstacles[2].pho.pos.x = 170;
+    obstacles[2].pho.pos.y = 400;
+
+    obstacles[3].pho.h = 20;
+    obstacles[3].pho.w = 400;
+    obstacles[3].pho.pos.x = 600;
+    obstacles[3].pho.pos.y = 450;
+
+    tile.h = T_H;
+    tile.w = T_W;
 
     for(int i = 0; i < N_OBST; i++)
-    stile_fill(&tile, obstacles[i].pho.pos.x / T_W, obstacles[i].pho.pos.y / T_H, obstacles[i].pho.w / T_W, obstacles[i].pho.h / T_H, 1);
+        stile_fill(&tile, obstacles[i].pho.pos.x/tile.w, obstacles[i].pho.pos.y/tile.h, obstacles[i].pho.w / T_W, obstacles[i].pho.h / T_H, 1);
 
-    cam.lock_area_w = 25;
-    cam.lock_area_h = 200;
+    for(int i = 0; i < N_OB; i++)
+        attackers[i] = false;
+
+    cam.lock_area_w = 50;
+    cam.lock_area_h = 10;
     cam.w = 640;
     cam.h = 480;
     cam.pos.x = 0;
@@ -82,6 +125,16 @@ void inline g_input()
                         if(sdl_event.key.keysym.sym == SDLK_SPACE)jump_key = 0;
                     }
 
+                    if(sdl_event.type == SDL_KEYDOWN && sdl_event.key.repeat == 0){
+                        if(sdl_event.key.keysym.sym == SDLK_LSHIFT){
+                            atk_key = 1;
+                        }
+                    }else if(sdl_event.type == SDL_KEYUP){
+                        if(sdl_event.key.keysym.sym == SDLK_LSHIFT)atk_key = 0;
+                    }
+
+
+
     }
 
     if(keystates[SDL_SCANCODE_LEFT])
@@ -103,7 +156,7 @@ inline void g_physics()
        *************************************************/
        //collisions are handled only against objects that are drawn to the stilemap
 
-       int i, j;
+       int i;
        PHYSOBJ *pho;
 
        for(i = 0; i < N_OB; i++){
@@ -114,37 +167,40 @@ inline void g_physics()
                        initial_pos = pho->pos;
 
                        if(objs[i].gravity){
-                            phy_gravity(pho);
+
+                            PHYSOBJ shadow_pho = *pho;
+                            shadow_pho.tmp_pos.y += G;
+
+                            if(!collides(&shadow_pho))// this solves the camera jittering problem, not cache efficient, optimise
+                                phy_gravity(pho);
+
                        }
 
 
                        //air resistance
                        //pho->vel.x *= 0.8;
-
+                        float tmp_vel_x = fabs(pho->vel.x);
+                        float tmp_vel_y = fabs(pho->vel.y);
                            //phy_move_y(pho);
                            pho->tmp_pos.y += pho->vel.y * delta_time;
                            if(collides(pho)){
-                                 //resolve collision
-                                 pho->y_collision = 1;
-
-                                 float tmp_vel_x = fabs(pho->vel.x);
-                                 float tmp_vel_y = fabs(pho->vel.y);
-
-                                 float sum = tmp_vel_x + tmp_vel_y;
+                                     //resolve collision
+                                     pho->y_collision = pho->vel.y;
 
 
-                                 float unit_vel_x = -pho->vel.x/sum;
-                                 float unit_vel_y = -pho->vel.y/sum;
+                                     float sum = tmp_vel_x + tmp_vel_y;
 
-                                 pho->vel.y  = 0;
+                                     float unit_vel_y = -pho->vel.y/sum;
 
-
-                                 while(collides(&objs[i].pho)){
-
-                                                      pho->tmp_pos.y += unit_vel_y;
+                                     pho->vel.y  = 0;
 
 
-                                 }
+                                     while(collides(&objs[i].pho)){
+                                                          pho->tmp_pos.y += unit_vel_y;
+
+
+                                     }
+
 
                              }else{
                                 pho->y_collision = 0;
@@ -153,15 +209,11 @@ inline void g_physics()
                            //phy_move_x(pho);
                            pho->tmp_pos.x += pho->vel.x * delta_time;
                            if(collides(pho)){
-                                 pho->x_collision = 1;
-
-                                 float tmp_vel_x = fabs(pho->vel.x);
-                                 float tmp_vel_y = fabs(pho->vel.y);
+                                 pho->x_collision = pho->vel.x;
 
                                  float sum = tmp_vel_x + tmp_vel_y;
 
                                  float unit_vel_x = -pho->vel.x/sum;
-                                 float unit_vel_y = -pho->vel.y/sum;
 
                                  pho->vel.x  = 0;
 
@@ -181,7 +233,7 @@ inline void g_physics()
 
                            phy_commit(pho);//lmao they should haha
 
-                           pho->movement = (int)pho->vel.x + (int)pho->vel.y;
+                           pho->movement = pho->vel.y;
 
 
        }
@@ -192,57 +244,42 @@ inline void g_physics()
 
 inline void g_update()
 {
+    gameplay_fsm_step();
+
+    //react to attacks
     for(int i = 0; i < N_OB; i++){
+        if(attackers[i]){
+            for(int j = 0; j < N_OB; j++){
+                if(i == j)continue;
 
-        switch(objs[i].state){
-            case IDLE:
-                //objs[i].pho.vel.x += 70 * right_key;
-                //objs[i].pho.vel.x -= 70 * left_key;
-                objs[i].pho.vel.x = PLR_H_SPD  *(right_key + (-left_key));
+                int x1, y1, h1, w1;
+                int x2, y2, h2, w2;
 
-                if(jump_key){
-                    objs[i].pho.vel.y -= JMP_SPD;
-                    objs[i].state = JUMP;
+                x1 = objs[i].pho.pos.x + objs[i].atk_info.x;
+                y1 = objs[i].pho.pos.y + objs[i].atk_info.y;
+                w1 = objs[i].pho.w + objs[i].atk_info.width;
+                h1 = objs[i].pho.h + objs[i].atk_info.height;
+
+                x2 = objs[j].pho.pos.x;
+                y2 = objs[j].pho.pos.y;
+                w2 = objs[j].pho.w;
+                h2 = objs[j].pho.h;
+
+                if(aabb_coll(x1, y1, x2, y2, h1, w1, h2, w2)){
+                    //process
+                    printf("attacked");
+                    break;
                 }
-                break;
-            case JUMP:
 
-                //objs[i].pho.vel.x += 70 * right_key;
-                //objs[i].pho.vel.x -= 70 * left_key;
-                objs[i].pho.vel.x = PLR_H_SPD  *(right_key + (-left_key));
-
-                if(jump_key){
-                    if(objs[i].pho.vel.y > -JMP_SPD*3){
-                        objs[i].pho.vel.y -= JMP_SPD;
-                    }else{
-                        objs[i].pho.vel.y *= 0.7;
-                        objs[i].state = FALLING;
-                        jump_key = 0;
-                    }
-                }else{
-                    objs[i].pho.vel.y *= 0.7;
-                    objs[i].state = FALLING;
-                    jump_key = 0;
-                }
-                break;
-            case FALLING:
-                //objs[i].pho.vel.x += 70 * right_key;
-                //objs[i].pho.vel.x -= 70 * left_key;
-                objs[i].pho.vel.x = PLR_H_SPD  *(right_key + (-left_key));
-
-                if(objs[i].pho.y_collision){
-                    objs[i].state = IDLE;
-                }
-                break;
-
+            }
+            attackers[i] = false;
         }
     }
-
 }
 
 inline void g_render()
 {
-        //if(objs[0].pho.movement)
+
         g_cam_follow(objs[0].pho.tmp_pos, objs[0].pho.w, objs[0].pho.h);
 
         SDL_Rect rect;
@@ -250,6 +287,7 @@ inline void g_render()
         SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
         SDL_RenderClear(g_renderer);
 
+        //render player and enemies and ???
         for(int i = 0; i < N_OB; i++){
 
             rect.h = objs[i].pho.h;
@@ -261,33 +299,53 @@ inline void g_render()
             SDL_RenderFillRect(g_renderer, &rect);
         }
 
+
+        //render environment
         for(int i = 0; i < N_OBST; i++){
+            if(obstacles[i].pho.pos.x < cam.pos.x + cam.w && obstacles[i].pho.pos.y < cam.pos.y + cam.h){
+                rect.h = obstacles[i].pho.h;
+                rect.w = obstacles[i].pho.w;
+                rect.x = obstacles[i].pho.pos.x - cam.pos.x;
+                rect.y = obstacles[i].pho.pos.y - cam.pos.y;
 
-            rect.h = obstacles[i].pho.h;
-            rect.w = obstacles[i].pho.w;
-            rect.x = obstacles[i].pho.pos.x - cam.pos.x;
-            rect.y = obstacles[i].pho.pos.y - cam.pos.y;
+                SDL_SetRenderDrawColor(g_renderer, 255, 0, 0, 255);
+                SDL_RenderDrawRect(g_renderer, &rect);
+            }
+        }
 
-            SDL_SetRenderDrawColor(g_renderer, 255, 0, 0, 255);
-            SDL_RenderDrawRect(g_renderer, &rect);
+
+        //render tiles
+        for(int j = 0; j < MAX_MAP_Y; j++){
+            for(int i = 0; i < MAX_MAP_X; i++){
+                 if(tile.map[i][j]){
+                    if(i * tile.w < (cam.pos.x + cam.w) && i * tile.w > (cam.pos.x - cam.w) && j * tile.h < (cam.pos.y + cam.h) && j * tile.h > (cam.pos.y - cam.h)){//render tiles only if they are in camera range
+                        rect.h = tile.h;
+                        rect.w = tile.w;
+                        rect.x = i * tile.w - cam.pos.x;
+                        rect.y = j * tile.h - cam.pos.y;
+                        SDL_SetRenderDrawColor(g_renderer, 255, 0, 255, 255);
+                        SDL_RenderDrawRect(g_renderer, &rect);
+                    }
+                 }
+            }
         }
 
 
                             //render camera
         rect.h = cam.h;
         rect.w = cam.w;
-        rect.x = cam.pos.x - cam.pos.x;
-        rect.y = cam.pos.y - cam.pos.y;
-        SDL_SetRenderDrawColor(g_renderer, 2, 0, 255, 255);
-        SDL_RenderDrawRect(g_renderer, &rect);
+                rect.x = cam.pos.x - cam.pos.x;
+                rect.y = cam.pos.y - cam.pos.y;
+                SDL_SetRenderDrawColor(g_renderer, 2, 0, 255, 255);
+                SDL_RenderDrawRect(g_renderer, &rect);
 
                         //render lock area in camera
-        rect.h = cam.lock_area_h;
-        rect.w = cam.lock_area_w;
-        rect.x = cam.pos.x + cam.w/2 - cam.lock_area_w/2 - cam.pos.x;
-        rect.y = cam.pos.y + cam.h/2 - cam.lock_area_h/2 - cam.pos.y;
-        SDL_SetRenderDrawColor(g_renderer, 2, 0, 255, 255);
-        SDL_RenderDrawRect(g_renderer, &rect);
+        //        rect.h = cam.lock_area_h;
+        //        rect.w = cam.lock_area_w;
+        //        rect.x = cam.pos.x + cam.w/2 - cam.lock_area_w/2 - cam.pos.x;
+        //        rect.y = cam.pos.y + cam.h/2 - cam.lock_area_h/2 - cam.pos.y;
+        //        SDL_SetRenderDrawColor(g_renderer, 2, 0, 255, 255);
+        //        SDL_RenderDrawRect(g_renderer, &rect);
 
         SDL_RenderPresent(g_renderer);
 
@@ -316,8 +374,8 @@ void g_play()
                        //anim_move(&objs[i].sprites);
                  }
 
-
                 //render
+                printf("%d %f %f\n", objs[0].pho.movement, objs[0].pho.vel.y, objs[0].pho.vel.x);
                 g_render();
 
                 g_tick();
@@ -364,6 +422,14 @@ inline void g_tick()
     delta_time = delta_ticks / 1000.0f;
 }
 
+inline bool g_within_cam_lock(PHYSOBJ *pho)
+{
+    float lock_x = cam.pos.x + 640/2;
+    float lock_y = cam.pos.y + 480/2;
+
+    return aabb_coll(cam.pos.x, cam.pos.y, lock_x, lock_y, cam.h, cam.w, cam.lock_area_h, cam.lock_area_w);
+
+}
 
 inline void g_cam_follow(VECTOR pos, float w, float h)
 {
@@ -388,8 +454,94 @@ inline void g_cam_follow(VECTOR pos, float w, float h)
     if(cam.pos.y < 0) cam.pos.y = 0;
     if(cam.pos.y + cam.h > 480*4) cam.pos.y = 480*4 - cam.h;
 
-    printf("%d\n", objs[0].pho.movement);
+    //printf("%d\n", objs[0].state);
 }
 
 
+inline void gameplay_fsm_step()
+{
+    for(int i = 0; i < N_OB; i++){
+            //looks like we will need a separate state machine for AI controlled objects
+            //because we need to disable the jump button in code
+        if(objs[i].controller == HUMAN){
+            objs[i].atk = atk_key;
+            objs[i].move_left = left_key;
+            objs[i].move_right = right_key;
+            objs[i].jump = jump_key;
+        }
+        switch(objs[i].state){
+            case IDLE:
 
+                if(objs[i].move_left || objs[i].move_right){
+                    objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+                    objs[i].state = WALKING;
+                }else if(objs[i].jump){
+                    objs[i].pho.vel.y -= JMP_SPD;
+                    objs[i].state = JUMP;
+                }
+
+                if(objs[i].atk){
+                    objs[i].state = ATK;
+                }
+                break;
+            case JUMP:
+
+                //objs[i].pho.vel.x += 70 * right_key;
+                //objs[i].pho.vel.x -= 70 * left_key;
+                objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+
+                if(objs[i].pho.y_collision){
+                    objs[i].pho.vel.y *= 0.7;
+                    objs[i].state = FALLING;
+                    objs[i].jump = 0;
+                    //jump_key = 0;
+                }else if(objs[i].jump){
+                    if(objs[i].pho.vel.y > -JMP_SPD*3){
+                        objs[i].pho.vel.y -= JMP_SPD;
+                    }else{
+                        objs[i].pho.vel.y *= 0.7;
+                        objs[i].state = FALLING;
+                        objs[i].jump = 0;
+                    }
+                }else{
+                    objs[i].pho.vel.y *= 0.7;
+                    objs[i].state = FALLING;
+                    objs[i].jump = 0;
+                }
+                break;
+            case FALLING:
+                //objs[i].pho.vel.x += 70 * right_key;
+                //objs[i].pho.vel.x -= 70 * left_key;
+                objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+
+                if(objs[i].pho.y_collision){
+                    objs[i].state = IDLE;
+                }
+                break;
+
+            case WALKING:
+
+               objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+
+                if(!(objs[i].move_right || objs[i].move_left)){
+                    objs[i].state = IDLE;
+                }else if(objs[i].jump){
+                    objs[i].pho.vel.y -= JMP_SPD;
+                    objs[i].state = JUMP;
+                }
+                break;
+            case ATK:
+
+                objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+
+                if(!(objs[i].move_right || objs[i].move_left)){
+                    objs[i].state = IDLE;
+                }else if(objs[i].jump){
+                    objs[i].pho.vel.y -= JMP_SPD;
+                    objs[i].state = JUMP;
+                }
+                break;
+
+        }
+    }
+}
