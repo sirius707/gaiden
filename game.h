@@ -10,10 +10,11 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <assert.h>
-
+#include "anim.h"
 
 #define N_OB 3
 #define N_OBST 4
+#define N_ANIM 1
 
 typedef struct OBJ OBJ;
 typedef struct CAM CAM;
@@ -49,7 +50,10 @@ struct CAM{
 
 struct OBJ{
     //animation
-    char animation;//if true apply animation; experimetnal
+    bool animation;//if true apply animation; experimetnal
+    uint8_t animation_id;
+    uint8_t current_animation_clip;
+    uint8_t current_frame;
 
     PLAYER_STATE state;
 
@@ -71,11 +75,34 @@ struct OBJ{
 };
 
 
+typedef struct ANIM ANIM;
+typedef struct FRAME FRAME;
+
+struct FRAME{
+    uint8_t row;
+    uint8_t column;
+
+    bool active;
+};
+
+struct ANIM{
+    uint8_t sprite_w;
+    uint8_t sprite_h;
+
+    bool active;
+
+    SDL_Texture *sprite_sheet;
+
+    FRAME frames[MAX_ANIMS][MAX_FRAMES];
+};
+
+
 
 STILE tile;
 
 OBJ objs[N_OB];//moving objects
 OBJ obstacles[N_OBST];//environment
+ANIM animations[N_ANIM];//animations
 
 CAM cam;
 
@@ -103,5 +130,8 @@ bool g_within_cam_lock(PHYSOBJ *pho);
 float clamp(const float x, const float ref);
 
 void gameplay_fsm_step();
+void gameplay_ai_fsm(int i);
+void gameplay_player_fsm(int i);
 
+int anim_step();
 #endif

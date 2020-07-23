@@ -35,6 +35,17 @@ void g_init()
 
     stile_init(&tile, MAP_W, MAP_H);
 
+    animations[0].active = 1;
+    animations[0].sprite_h = 65;
+    animations[0].sprite_w = 40;
+
+    SDL_Surface *img = SDL_LoadBMP("hagane.bmp");
+    animations[0].sprite_sheet = accelerate_surface(img, g_renderer);
+
+    animations[0].frames[0][0].row = 0;
+    animations[0].frames[0][0].column = 0;
+    animations[0].frames[0][0].active = 1;
+
     objs[1].pho.h = 30.0f;
     objs[1].pho.w = 20.0f;
     objs[1].pho.tmp_pos.x = 130.0f;
@@ -59,6 +70,7 @@ void g_init()
     objs[0].gravity = 1;
     objs[0].state = IDLE;
     objs[0].controller = HUMAN;
+    objs[0].animation_id = 0;
 
     objs[2].pho.h = 30.0f;
     objs[2].pho.w = 20.0f;
@@ -295,8 +307,21 @@ inline void g_render()
             rect.x = objs[i].pho.pos.x - cam.pos.x;
             rect.y = objs[i].pho.pos.y - cam.pos.y;
 
+
             SDL_SetRenderDrawColor(g_renderer, 0, 255, 0, 255);
             SDL_RenderFillRect(g_renderer, &rect);
+
+            uint8_t ani_id = objs[i].animation_id;
+            uint8_t clip = objs[i].current_animation_clip;
+            uint8_t frame = objs[i].current_frame;
+
+            SDL_Rect src;
+            src.h = animations[ani_id].sprite_h;
+            src.w = animations[ani_id].sprite_w;
+            src.x = animations[ani_id].frames[clip][frame].row * src.w;
+            src.y = animations[ani_id].frames[clip][frame].column * src.h;
+
+            SDL_RenderCopy(g_renderer, animations[i].sprite_sheet, &src, &rect);
         }
 
 
@@ -464,12 +489,22 @@ inline void gameplay_fsm_step()
             //looks like we will need a separate state machine for AI controlled objects
             //because we need to disable the jump button in code
         if(objs[i].controller == HUMAN){
-            objs[i].atk = atk_key;
-            objs[i].move_left = left_key;
-            objs[i].move_right = right_key;
-            objs[i].jump = jump_key;
+            gameplay_player_fsm(i);
+        }else{
+            gameplay_ai_fsm(i);
         }
-        switch(objs[i].state){
+    }
+}
+
+
+inline void gameplay_ai_fsm(int i)
+{
+            //objs[i].atk = atk_key;
+            //objs[i].move_left = left_key;
+            //objs[i].move_right = right_key;
+            //objs[i].jump = jump_key;
+
+            switch(objs[i].state){
             case IDLE:
 
                 if(objs[i].move_left || objs[i].move_right){
@@ -543,5 +578,103 @@ inline void gameplay_fsm_step()
                 break;
 
         }
+}
+
+int anim_step()
+{
+    for(int i = 0; i < N_OB; i++){
+        int ani_id = objs[i].animation_id;
+        int clip = objs[i].current_animation_clip;
+        int frame = objs[i].current_frame;
+
+        if(animations[ani_id].frames[clip][frame+1].active){
+            objs[i].current_frame++;
+            return ANIMATION_CONTINUE;
+        }
+
+        return ANIMATION_END;
+
     }
+}
+inline void gameplay_player_fsm(int i)
+{
+            objs[i].atk = atk_key;
+            objs[i].move_left = left_key;
+            objs[i].move_right = right_key;
+            objs[i].jump = jump_key;
+
+            switch(objs[i].state){
+            case IDLE:
+
+                if(objs[i].move_left || objs[i].move_right){
+                    objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+                    objs[i].state = WALKING;
+                }else if(objs[i].jump){
+                    objs[i].pho.vel.y -= JMP_SPD;
+                    objs[i].state = JUMP;
+                }
+
+                if(objs[i].atk){
+                    objs[i].state = ATK;
+                }
+                break;
+            case JUMP:
+
+                //objs[i].pho.vel.x += 70 * right_key;
+                //objs[i].pho.vel.x -= 70 * left_key;
+                objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+
+                if(objs[i].pho.y_collision){
+                    objs[i].pho.vel.y *= 0.7;
+                    objs[i].state = FALLING;
+                    objs[i].jump = 0;
+                    //jump_key = 0;
+                }else if(objs[i].jump){
+                    if(objs[i].pho.vel.y > -JMP_SPD*3){
+                        objs[i].pho.vel.y -= JMP_SPD;
+                    }else{
+                        objs[i].pho.vel.y *= 0.7;
+                        objs[i].state = FALLING;
+                        objs[i].jump = 0;
+                    }
+                }else{
+                    objs[i].pho.vel.y *= 0.7;
+                    objs[i].state = FALLING;
+                    objs[i].jump = 0;
+                }
+                break;
+            case FALLING:
+                //objs[i].pho.vel.x += 70 * right_key;
+                //objs[i].pho.vel.x -= 70 * left_key;
+                objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+
+                if(objs[i].pho.y_collision){
+                    objs[i].state = IDLE;
+                }
+                break;
+
+            case WALKING:
+
+               objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+
+                if(!(objs[i].move_right || objs[i].move_left)){
+                    objs[i].state = IDLE;
+                }else if(objs[i].jump){
+                    objs[i].pho.vel.y -= JMP_SPD;
+                    objs[i].state = JUMP;
+                }
+                break;
+            case ATK:
+
+                objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
+
+                if(!(objs[i].move_right || objs[i].move_left)){
+                    objs[i].state = IDLE;
+                }else if(objs[i].jump){
+                    objs[i].pho.vel.y -= JMP_SPD;
+                    objs[i].state = JUMP;
+                }
+                break;
+
+        }
 }

@@ -353,10 +353,10 @@
 1589746141 f:\blocks\gaiden\physics.h
 	<stdbool.h>
 
-1595152929 source:f:\blocks\gaiden\game.c
+1595522106 source:f:\blocks\gaiden\game.c
 	"game.h"
 
-1594995289 f:\blocks\gaiden\game.h
+1595515543 f:\blocks\gaiden\game.h
 	"my_sdl_util.h"
 	"physics.h"
 	"math.h"
@@ -366,6 +366,7 @@
 	<stdbool.h>
 	<stdio.h>
 	<assert.h>
+	"anim.h"
 
 1588281627 f:\blocks\gaiden\stile.h
 
@@ -377,4 +378,7 @@
 
 1588284956 source:f:\blocks\gaiden\my_sdl_util.c
 	"my_sdl_util.h"
+
+1595515749 f:\blocks\gaiden\anim.h
+	<stdint.h>
 
