@@ -54,6 +54,7 @@ struct OBJ{
     uint8_t animation_id;
     uint8_t current_animation_clip;
     uint8_t current_frame;
+    bool flip;
 
     PLAYER_STATE state;
 

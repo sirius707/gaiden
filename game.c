@@ -12,6 +12,10 @@
 #define PLR_H_SPD 300
 #define JMP_SPD 9.8*20
 
+
+#define TICKS_PER_FRAME 1000.0f/30.0f
+#define FPS 60.0f/1000.0f
+
 SDL_Event sdl_event;
 bool quit_event = 0;
 
@@ -37,14 +41,44 @@ void g_init()
 
     animations[0].active = 1;
     animations[0].sprite_h = 65;
-    animations[0].sprite_w = 40;
+    animations[0].sprite_w = 43;
 
     SDL_Surface *img = SDL_LoadBMP("hagane.bmp");
     animations[0].sprite_sheet = accelerate_surface(img, g_renderer);
 
-    animations[0].frames[0][0].row = 0;
-    animations[0].frames[0][0].column = 0;
-    animations[0].frames[0][0].active = 1;
+    animations[0].frames[IDLE][0].row = 0;
+    animations[0].frames[IDLE][0].column = 0;
+    animations[0].frames[IDLE][0].active = 1;
+
+
+    animations[0].frames[WALKING][0].row = 0;
+    animations[0].frames[WALKING][0].column = 4;
+    animations[0].frames[WALKING][0].active = 1;
+
+    animations[0].frames[WALKING][1].row = 0;
+    animations[0].frames[WALKING][1].column = 5;
+    animations[0].frames[WALKING][1].active = 1;
+
+    animations[0].frames[WALKING][2].row = 0;
+    animations[0].frames[WALKING][2].column = 6;
+    animations[0].frames[WALKING][2].active = 1;
+
+    animations[0].frames[WALKING][3].row = 0;
+    animations[0].frames[WALKING][3].column = 7;
+    animations[0].frames[WALKING][3].active = 1;
+
+    animations[0].frames[WALKING][4].row = 0;
+    animations[0].frames[WALKING][4].column = 8;
+    animations[0].frames[WALKING][4].active = 1;
+
+    animations[0].frames[JUMP][0].row = 1;
+    animations[0].frames[JUMP][0].column = 6;
+    animations[0].frames[JUMP][0].active = 1;
+
+    animations[0].frames[FALLING][0].row = 0;
+    animations[0].frames[FALLING][0].column = 5;
+    animations[0].frames[FALLING][0].active = 1;
+
 
     objs[1].pho.h = 30.0f;
     objs[1].pho.w = 20.0f;
@@ -299,6 +333,7 @@ inline void g_render()
         SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
         SDL_RenderClear(g_renderer);
 
+
         //render player and enemies and ???
         for(int i = 0; i < N_OB; i++){
 
@@ -314,20 +349,25 @@ inline void g_render()
             uint8_t ani_id = objs[i].animation_id;
             uint8_t clip = objs[i].current_animation_clip;
             uint8_t frame = objs[i].current_frame;
-
             SDL_Rect src;
             src.h = animations[ani_id].sprite_h;
             src.w = animations[ani_id].sprite_w;
-            src.x = animations[ani_id].frames[clip][frame].row * src.w;
-            src.y = animations[ani_id].frames[clip][frame].column * src.h;
+            src.x = animations[ani_id].frames[clip][frame].column * src.w;
+            src.y = animations[ani_id].frames[clip][frame].row * src.h;
 
-            SDL_RenderCopy(g_renderer, animations[i].sprite_sheet, &src, &rect);
+            if(objs[i].flip){
+                SDL_RenderCopyEx(g_renderer, animations[i].sprite_sheet, &src, &rect, 0, NULL, SDL_FLIP_HORIZONTAL);
+            }else{
+                SDL_RenderCopy(g_renderer, animations[i].sprite_sheet, &src, &rect);
+            }
+
         }
 
 
         //render environment
         for(int i = 0; i < N_OBST; i++){
             if(obstacles[i].pho.pos.x < cam.pos.x + cam.w && obstacles[i].pho.pos.y < cam.pos.y + cam.h){
+
                 rect.h = obstacles[i].pho.h;
                 rect.w = obstacles[i].pho.w;
                 rect.x = obstacles[i].pho.pos.x - cam.pos.x;
@@ -381,8 +421,12 @@ void g_play()
 {
 
     g_init();
+     uint64_t t_begin = 0, t_end = 0;
+     float elapsed_ms = 0;
      //install_int(s_draw_flag, 80);
      while(!quit_event){
+
+                 t_begin = SDL_GetPerformanceCounter();
 
                  //input
                  g_input();
@@ -395,17 +439,20 @@ void g_play()
 
 
                  //animate
-                 for(int i = 0; i < N_OB; i++){
-                       //anim_move(&objs[i].sprites);
-                 }
+                 anim_step();
 
                 //render
-                printf("%d %f %f\n", objs[0].pho.movement, objs[0].pho.vel.y, objs[0].pho.vel.x);
                 g_render();
 
                 g_tick();
                 //rest(50);
                 //SDL_Delay(50);
+
+
+                t_end = SDL_GetPerformanceCounter();
+                elapsed_ms = (t_end - t_begin)/(float)SDL_GetPerformanceFrequency()*1000.0f;
+
+                SDL_Delay((TICKS_PER_FRAME - elapsed_ms));
 
 
 
@@ -589,10 +636,10 @@ int anim_step()
 
         if(animations[ani_id].frames[clip][frame+1].active){
             objs[i].current_frame++;
-            return ANIMATION_CONTINUE;
-        }
 
-        return ANIMATION_END;
+        }else{
+            objs[i].current_frame = 0;
+        }
 
     }
 }
@@ -603,15 +650,27 @@ inline void gameplay_player_fsm(int i)
             objs[i].move_right = right_key;
             objs[i].jump = jump_key;
 
-            switch(objs[i].state){
+            static bool jump_lock = false;
+
+            if(left_key)objs[i].flip = left_key;
+            if(right_key)objs[i].flip = 0;
+
+             switch(objs[i].state){
             case IDLE:
 
                 if(objs[i].move_left || objs[i].move_right){
                     objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
                     objs[i].state = WALKING;
+
+                    objs[i].current_animation_clip = WALKING;
+                    objs[i].current_frame = 0;
+
                 }else if(objs[i].jump){
                     objs[i].pho.vel.y -= JMP_SPD;
                     objs[i].state = JUMP;
+
+                    objs[i].current_animation_clip = JUMP;
+                    objs[i].current_frame = 0;
                 }
 
                 if(objs[i].atk){
@@ -619,50 +678,84 @@ inline void gameplay_player_fsm(int i)
                 }
                 break;
             case JUMP:
-
                 //objs[i].pho.vel.x += 70 * right_key;
                 //objs[i].pho.vel.x -= 70 * left_key;
                 objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
 
-                if(objs[i].pho.y_collision){
+                if(objs[i].pho.y_collision){//if booped in the head by a ceiling
                     objs[i].pho.vel.y *= 0.7;
-                    objs[i].state = FALLING;
                     objs[i].jump = 0;
+
+                    objs[i].state = FALLING;
+                    objs[i].current_animation_clip = FALLING;
+                    objs[i].current_frame = 0;
+                    jump_lock = false;
                     //jump_key = 0;
-                }else if(objs[i].jump){
+                }
+
+                if(objs[i].jump && !jump_lock){
                     if(objs[i].pho.vel.y > -JMP_SPD*3){
                         objs[i].pho.vel.y -= JMP_SPD;
                     }else{
+                        jump_lock = true;
                         objs[i].pho.vel.y *= 0.7;
-                        objs[i].state = FALLING;
                         objs[i].jump = 0;
                     }
-                }else{
+                }
+
+                if(objs[i].pho.vel.y > 0){
                     objs[i].pho.vel.y *= 0.7;
-                    objs[i].state = FALLING;
                     objs[i].jump = 0;
+
+                    objs[i].state = FALLING;
+                    objs[i].current_animation_clip = FALLING;
+                    objs[i].current_frame = 0;
+                    jump_lock = false;
                 }
                 break;
             case FALLING:
-                //objs[i].pho.vel.x += 70 * right_key;
-                //objs[i].pho.vel.x -= 70 * left_key;
+
                 objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
 
                 if(objs[i].pho.y_collision){
-                    objs[i].state = IDLE;
+                    if(objs[i].move_left || objs[i].move_right){
+                        objs[i].state = WALKING;
+
+                        objs[i].current_animation_clip = WALKING;
+                        objs[i].current_frame = 0;
+
+                    }else{
+                        objs[i].state = IDLE;
+                        objs[i].current_animation_clip = IDLE;
+                        objs[i].current_frame = 0;
+                    }
                 }
                 break;
 
             case WALKING:
 
                objs[i].pho.vel.x = PLR_H_SPD  *(objs[i].move_right + (-objs[i].move_left));
-
                 if(!(objs[i].move_right || objs[i].move_left)){
                     objs[i].state = IDLE;
+
+                    objs[i].current_animation_clip = IDLE;
+                    objs[i].current_frame = 0;
+
+                    if(objs[i].pho.y_collision == 0){
+                        //objs[i].state = FALLING;
+                        //objs[i].current_animation_clip = FALLING;
+                        //objs[i].current_frame = 0;
+                    }
                 }else if(objs[i].jump){
                     objs[i].pho.vel.y -= JMP_SPD;
                     objs[i].state = JUMP;
+
+                    objs[i].current_animation_clip = JUMP;
+                    objs[i].current_frame = 0;
+
                 }
+
+
                 break;
             case ATK:
 

@@ -7,9 +7,9 @@ void deinit();
 SDL_Window *window = NULL;
 SDL_Surface *screenSurface = NULL;
 
+
 int main( int argc, char* args[] )
 {
-
     init();
 
     g_play();
@@ -17,6 +17,7 @@ int main( int argc, char* args[] )
     deinit();
 	return 0;
 }
+
 
 void init()
 {
@@ -29,7 +30,7 @@ void init()
 	}
 	else
 	{
-		window = SDL_CreateWindow( "SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_SHOWN );
+		window = SDL_CreateWindow( "Gaiden", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_SHOWN );
 		if( window == NULL )
 		{
 			printf( "Window could not be created! SDL_Error: %s\n", SDL_GetError() );
@@ -40,7 +41,7 @@ void init()
 			screenSurface = SDL_GetWindowSurface( window );
         }
 	}
-	g_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	g_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
 
 }
